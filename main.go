@@ -40,7 +40,7 @@ func main() {
 	e.GET("/api/verve/accept", acceptHandler)
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 	go logUniqueRequests()
-	e.Logger.Fatal(e.Start(":8081"))
+	e.Logger.Fatal(e.Start(":8080"))
 }
 
 // acceptHandler handles the GET request
@@ -73,7 +73,7 @@ func acceptHandler(c echo.Context) error {
 		}
 		return c.String(http.StatusOK, "ok")
 	} else {
-		return c.String(http.StatusOK, "Duplicate request")
+		return c.String(http.StatusOK, "ok")
 	}
 }
 
