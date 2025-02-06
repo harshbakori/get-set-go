@@ -1,0 +1,32 @@
+basePath: /
+host: localhost:8080
+info:
+  contact: {}
+  description: This is a sample API for Verve service.
+  title: Verve Service API
+  version: "1.0"
+paths:
+  /api/verve/accept:
+    get:
+      description: Accepts an integer ID and an optional endpoint to notify
+      parameters:
+      - description: Request ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      - description: Notification Endpoint
+        in: query
+        name: endpoint
+        type: string
+      responses:
+        "200":
+          description: ok
+          schema:
+            type: string
+        "400":
+          description: id is required or must be an integer
+          schema:
+            type: string
+      summary: Accept a request
+swagger: "2.0"
