@@ -16,3 +16,9 @@
 
 ## run go server
 `go run main.go`
+
+## build and run
+```
+go build main.go
+./get-set-go
+```

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 	_ "get-set-go/docs"
 	"log"
@@ -9,30 +9,37 @@ import (
 	"net/url"
 	"os"
 	"strconv"
-	"time"
 
-	"github.com/confluentinc/confluent-kafka-go/kafka"
-	"github.com/go-redis/redis/v8"
 	"github.com/labstack/echo/v4"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
-var (
-	rdb      *redis.Client
-	ctx      = context.Background()
-	producer *kafka.Producer
-)
+type Config struct {
+	Redis struct {
+		Address string `json:"address"`
+	} `json:"redis"`
+	Kafka struct {
+		BootstrapServers string `json:"bootstrap_servers"`
+	} `json:"kafka"`
+}
 
 func init() {
-	rdb = redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
-
-	var err error
-	producer, err = kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost:19092"})
+	file, err := os.Open("config.json")
 	if err != nil {
-		log.Fatalf("Failed to create Kafka producer: %v", err)
+		log.Fatalf("Failed to open config file: %v", err)
 	}
+	defer file.Close()
+
+	var config Config
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(&config)
+	if err != nil {
+		log.Fatalf("Failed to decode config file: %v", err)
+	}
+
+	initRedis(config.Redis.Address)
+
+	initKafka(config.Kafka.BootstrapServers)
 }
 
 func main() {
@@ -85,43 +92,31 @@ func acceptHandler(c echo.Context) error {
 	}
 }
 
-func isUniqueRequest(id int) bool {
-	val, err := rdb.SetNX(ctx, fmt.Sprintf("request_id_%d", id), 1, 1*time.Minute).Result()
-	if err != nil {
-		log.Printf("Failed to check/set unique ID in Redis: %v", err)
-		return false
-	}
-	return val
-}
+// func isUniqueRequest(id int) bool {
+// 	val, err := rdb.SetNX(ctx, fmt.Sprintf("request_id_%d", id), 1, 1*time.Minute).Result()
+// 	if err != nil {
+// 		log.Printf("Failed to check/set unique ID in Redis: %v", err)
+// 		return false
+// 	}
+// 	return val
+// }
 
-func logUniqueRequests() {
-	for {
-		time.Sleep(1 * time.Minute)
+// func logUniqueRequests() {
+// 	for {
+// 		time.Sleep(1 * time.Minute)
 
-		count, err := rdb.DBSize(ctx).Result()
-		if err != nil {
-			log.Printf("Failed to get unique request count from Redis: %v", err)
-			continue
-		}
-		log.Printf("Unique request count in the last minute: %d", count)
+// 		count, err := rdb.DBSize(ctx).Result()
+// 		if err != nil {
+// 			log.Printf("Failed to get unique request count from Redis: %v", err)
+// 			continue
+// 		}
+// 		log.Printf("Unique request count in the last minute: %d", count)
 
-		sendToKafka(count)
+// 		sendToKafka(count)
 
-		rdb.FlushDB(ctx)
-	}
-}
-
-func sendToKafka(count int64) {
-	topic := "unique_request_counts"
-	message := fmt.Sprintf("Unique request count: %d", count)
-	err := producer.Produce(&kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
-		Value:          []byte(message),
-	}, nil)
-	if err != nil {
-		log.Printf("Failed to send message to Kafka: %v", err)
-	}
-}
+// 		rdb.FlushDB(ctx)
+// 	}
+// }
 
 func sendPostRequest(endpoint string) {
 	count, err := rdb.DBSize(ctx).Result()
