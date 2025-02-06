@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	_ "get-set-go/docs"
 	"log"
 	"net/http"
 	"net/url"
@@ -10,21 +11,28 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/go-redis/redis/v8"
 	"github.com/labstack/echo/v4"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
 var (
-	rdb *redis.Client
-	ctx = context.Background()
+	rdb      *redis.Client
+	ctx      = context.Background()
+	producer *kafka.Producer
 )
 
 func init() {
 	rdb = redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
-	fmt.Println("Redis client created")
+
+	var err error
+	producer, err = kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost:19092"})
+	if err != nil {
+		log.Fatalf("Failed to create Kafka producer: %v", err)
+	}
 }
 
 func main() {
@@ -40,7 +48,7 @@ func main() {
 	e.GET("/api/verve/accept", acceptHandler)
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
 	go logUniqueRequests()
-	e.Logger.Fatal(e.Start(":8080"))
+	e.Logger.Fatal(e.Start(":8081"))
 }
 
 // acceptHandler handles the GET request
@@ -73,7 +81,7 @@ func acceptHandler(c echo.Context) error {
 		}
 		return c.String(http.StatusOK, "ok")
 	} else {
-		return c.String(http.StatusOK, "ok")
+		return c.String(http.StatusOK, "Duplicate request")
 	}
 }
 
@@ -97,7 +105,21 @@ func logUniqueRequests() {
 		}
 		log.Printf("Unique request count in the last minute: %d", count)
 
+		sendToKafka(count)
+
 		rdb.FlushDB(ctx)
+	}
+}
+
+func sendToKafka(count int64) {
+	topic := "unique_request_counts"
+	message := fmt.Sprintf("Unique request count: %d", count)
+	err := producer.Produce(&kafka.Message{
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
+		Value:          []byte(message),
+	}, nil)
+	if err != nil {
+		log.Printf("Failed to send message to Kafka: %v", err)
 	}
 }
 
